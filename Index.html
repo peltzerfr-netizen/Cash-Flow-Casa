@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1923">
+<title>Cash Flow Familiar</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+–bg:        #0f1923;
+–surface:   #162030;
+–surface2:  #1e2d40;
+–border:    #2a3d52;
+–accent:    #3dd6ac;
+–accent2:   #f5a623;
+–red:       #e8524a;
+–text:      #e8edf2;
+–muted:     #7a9ab5;
+–mono:      ‘DM Mono’, monospace;
+–sans:      ‘Syne’, sans-serif;
+}
+
+html, body {
+height: 100%; width: 100%;
+background: var(–bg);
+color: var(–text);
+font-family: var(–sans);
+overflow: hidden;
+}
+
+/* ── LAYOUT ── */
+#app {
+display: flex; flex-direction: column;
+height: 100dvh; max-width: 480px;
+margin: 0 auto; position: relative;
+}
+
+/* ── HEADER ── */
+header {
+padding: 16px 20px 12px;
+display: flex; align-items: center; justify-content: space-between;
+border-bottom: 1px solid var(–border);
+background: var(–bg);
+flex-shrink: 0;
+}
+.logo { font-size: 13px; font-weight: 700; letter-spacing: .12em; color: var(–accent); text-transform: uppercase; }
+.month-badge {
+font-family: var(–mono); font-size: 11px;
+background: var(–surface2); border: 1px solid var(–border);
+color: var(–accent2); padding: 4px 10px; border-radius: 20px;
+letter-spacing: .06em;
+}
+.auth-btn {
+font-family: var(–mono); font-size: 11px;
+background: var(–accent); color: var(–bg);
+border: none; padding: 6px 14px; border-radius: 20px;
+cursor: pointer; font-weight: 500; letter-spacing: .04em;
+transition: opacity .2s;
+}
+.auth-btn:hover { opacity: .85; }
+.auth-btn.connected {
+background: transparent; border: 1px solid var(–accent);
+color: var(–accent);
+}
+
+/* ── FEED ── */
+#feed {
+flex: 1; overflow-y: auto;
+padding: 16px 20px;
+display: flex; flex-direction: column; gap: 12px;
+scroll-behavior: smooth;
+}
+#feed::-webkit-scrollbar { width: 3px; }
+#feed::-webkit-scrollbar-track { background: transparent; }
+#feed::-webkit-scrollbar-thumb { background: var(–border); border-radius: 2px; }
+
+/* ── MESSAGES ── */
+.msg {
+max-width: 88%; animation: slideUp .25s ease;
+display: flex; flex-direction: column; gap: 4px;
+}
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg.agent { align-self: flex-start; align-items: flex-start; }
+
+.bubble {
+padding: 12px 16px; border-radius: 18px;
+font-size: 14px; line-height: 1.5;
+}
+.msg.user .bubble {
+background: var(–accent); color: var(–bg);
+border-bottom-right-radius: 4px; font-weight: 500;
+}
+.msg.agent .bubble {
+background: var(–surface); border: 1px solid var(–border);
+color: var(–text); border-bottom-left-radius: 4px;
+}
+.msg.agent .bubble.error {
+border-color: var(–red); color: var(–red);
+background: rgba(232,82,74,.08);
+}
+.msg.agent .bubble.success {
+border-color: var(–accent); color: var(–accent);
+background: rgba(61,214,172,.08);
+}
+.ts {
+font-family: var(–mono); font-size: 10px;
+color: var(–muted); padding: 0 4px;
+}
+
+/* Confirm card */
+.confirm-card {
+background: var(–surface); border: 1px solid var(–accent);
+border-radius: 16px; padding: 16px; width: 100%;
+display: flex; flex-direction: column; gap: 12px;
+}
+.confirm-card .label {
+font-family: var(–mono); font-size: 10px;
+color: var(–muted); text-transform: uppercase; letter-spacing: .1em;
+}
+.confirm-items { display: flex; flex-direction: column; gap: 8px; }
+.confirm-item {
+display: flex; justify-content: space-between; align-items: center;
+padding: 8px 12px; background: var(–surface2);
+border-radius: 10px; gap: 8px;
+}
+.confirm-item .concept { font-size: 13px; color: var(–text); flex: 1; }
+.confirm-item .amount {
+font-family: var(–mono); font-size: 14px;
+color: var(–accent2); font-weight: 500;
+}
+.confirm-item .cat-tag {
+font-size: 10px; padding: 2px 8px; border-radius: 10px;
+background: rgba(61,214,172,.12); color: var(–accent);
+font-family: var(–mono);
+}
+.confirm-actions { display: flex; gap: 8px; }
+.btn-confirm {
+flex: 1; padding: 12px; border-radius: 12px; border: none;
+font-family: var(–sans); font-size: 14px; font-weight: 700;
+cursor: pointer; transition: all .2s;
+}
+.btn-yes { background: var(–accent); color: var(–bg); }
+.btn-yes:hover { opacity: .85; }
+.btn-no { background: var(–surface2); color: var(–muted); border: 1px solid var(–border); }
+.btn-no:hover { color: var(–red); border-color: var(–red); }
+
+/* Typing indicator */
+.typing { display: flex; gap: 5px; align-items: center; padding: 14px 18px; }
+.typing span {
+width: 7px; height: 7px; border-radius: 50%;
+background: var(–muted); animation: bounce .9s infinite;
+}
+.typing span:nth-child(2) { animation-delay: .15s; }
+.typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes bounce {
+0%,60%,100% { transform: translateY(0); }
+30% { transform: translateY(-6px); }
+}
+
+/* ── INPUT BAR ── */
+#input-bar {
+padding: 12px 16px 20px;
+border-top: 1px solid var(–border);
+background: var(–bg);
+flex-shrink: 0;
+}
+.input-row {
+display: flex; gap: 10px; align-items: flex-end;
+}
+#msg-input {
+flex: 1; background: var(–surface); border: 1px solid var(–border);
+color: var(–text); font-family: var(–sans); font-size: 15px;
+padding: 12px 16px; border-radius: 24px; outline: none;
+resize: none; max-height: 120px; min-height: 48px;
+line-height: 1.4; transition: border-color .2s;
+}
+#msg-input::placeholder { color: var(–muted); }
+#msg-input:focus { border-color: var(–accent); }
+
+.icon-btn {
+width: 48px; height: 48px; border-radius: 50%; border: none;
+display: flex; align-items: center; justify-content: center;
+cursor: pointer; transition: all .2s; flex-shrink: 0;
+}
+#send-btn { background: var(–accent); }
+#send-btn:hover { opacity: .85; }
+#send-btn svg { color: var(–bg); }
+
+#mic-btn { background: var(–surface2); border: 1px solid var(–border); }
+#mic-btn.recording {
+background: var(–red); border-color: var(–red);
+animation: pulse 1s infinite;
+}
+@keyframes pulse {
+0%,100% { box-shadow: 0 0 0 0 rgba(232,82,74,.4); }
+50% { box-shadow: 0 0 0 8px rgba(232,82,74,0); }
+}
+
+@keyframes slideUp {
+from { opacity: 0; transform: translateY(10px); }
+to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── AUTH OVERLAY ── */
+#auth-overlay {
+position: absolute; inset: 0;
+background: var(–bg);
+display: flex; flex-direction: column;
+align-items: center; justify-content: center;
+gap: 24px; padding: 40px 32px;
+z-index: 100;
+}
+#auth-overlay.hidden { display: none; }
+.auth-logo { font-size: 40px; }
+.auth-title { font-size: 26px; font-weight: 800; text-align: center; line-height: 1.2; }
+.auth-title span { color: var(–accent); }
+.auth-desc { font-size: 14px; color: var(–muted); text-align: center; line-height: 1.6; max-width: 300px; }
+.auth-big-btn {
+width: 100%; padding: 16px; border-radius: 16px;
+background: var(–accent); color: var(–bg);
+border: none; font-family: var(–sans); font-size: 16px; font-weight: 700;
+cursor: pointer; transition: opacity .2s; letter-spacing: .02em;
+}
+.auth-big-btn:hover { opacity: .85; }
+
+/* Token input fallback */
+.token-input-wrap { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.token-input-wrap label { font-size: 12px; color: var(–muted); font-family: var(–mono); }
+.token-input-wrap input {
+width: 100%; background: var(–surface); border: 1px solid var(–border);
+color: var(–text); font-family: var(–mono); font-size: 13px;
+padding: 12px 16px; border-radius: 12px; outline: none;
+transition: border-color .2s;
+}
+.token-input-wrap input:focus { border-color: var(–accent); }
+.token-submit {
+width: 100%; padding: 14px; border-radius: 12px;
+background: var(–surface2); color: var(–accent);
+border: 1px solid var(–accent); font-family: var(–sans);
+font-size: 14px; font-weight: 700; cursor: pointer; transition: all .2s;
+}
+.token-submit:hover { background: var(–accent); color: var(–bg); }
+
+.divider { width: 100%; display: flex; align-items: center; gap: 12px; }
+.divider::before, .divider::after {
+content: ‘’; flex: 1; height: 1px; background: var(–border);
+}
+.divider span { font-size: 11px; color: var(–muted); font-family: var(–mono); }
+</style>
+
+</head>
+<body>
+<div id="app">
+
+  <!-- AUTH OVERLAY -->
+
+  <div id="auth-overlay">
+    <div class="auth-logo">🏠</div>
+    <div class="auth-title">Cash Flow<br><span>Familiar</span></div>
+    <div class="auth-desc">Conectá tu Google Sheet para cargar gastos con voz o texto en segundos.</div>
+    <button class="auth-big-btn" onclick="startOAuth()">Conectar con Google</button>
+    <div class="divider"><span>o ingresá el token manualmente</span></div>
+    <div class="token-input-wrap">
+      <label>ACCESS TOKEN (de OAuth Playground)</label>
+      <input type="text" id="manual-token" placeholder="ya29.xxxxx...">
+      <button class="token-submit" onclick="useManualToken()">Usar este token</button>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+
+  <header>
+    <div class="logo">💰 Cash Flow</div>
+    <div class="month-badge" id="month-display">—</div>
+    <button class="auth-btn connected hidden" id="logout-btn" onclick="logout()">Salir</button>
+  </header>
+
+  <!-- FEED -->
+
+  <div id="feed"></div>
+
+  <!-- INPUT BAR -->
+
+  <div id="input-bar">
+    <div class="input-row">
+      <button class="icon-btn" id="mic-btn" onclick="toggleMic()">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#7a9ab5" stroke-width="2">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+        </svg>
+      </button>
+      <textarea id="msg-input" placeholder="Gasté $8500 en verdulería..." rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="icon-btn" id="send-btn" onclick="sendMessage()">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#0f1923" stroke-width="2.5">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const SPREADSHEET_ID = '1E85tPc8d00PRteSNDU5j1rmrOngsLtGoTwdb0LpXf8Q';
+const CLIENT_ID      = '196093957927-rp1178invth7h94dapt0j73omkiuv0pf.apps.googleusercontent.com';
+const CLIENT_SECRET  = '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';
+const REDIRECT_URI   = window.location.href.split('?')[0].split('#')[0];
+const SCOPES         = 'https://www.googleapis.com/auth/spreadsheets';
+
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ── CATEGORY MAP ─────────────────────────────────────────────────────────────
+// Maps keywords → { sheet_name_fragment, row_label } for fuzzy matching
+const CATEGORY_MAP = [
+  { keys:['edenor','luz','electricidad'],          cat:'Servicios',         concept:'Edenor' },
+  { keys:['naturgy','gas'],                         cat:'Servicios',         concept:'Naturgy' },
+  { keys:['aysa','agua','aguas'],                   cat:'Servicios',         concept:'AySA' },
+  { keys:['abl'],                                   cat:'Servicios',         concept:'ABL' },
+  { keys:['arba'],                                  cat:'Servicios',         concept:'ARBA' },
+  { keys:['apple','icloud','cloud pachu'],          cat:'Servicios',         concept:'Apple Cloud Pachu' },
+  { keys:['apple fran','cloud fran'],               cat:'Servicios',         concept:'Apple Cloud Fran' },
+  { keys:['personal flow','flow','internet','wifi'],cat:'Servicios',         concept:'Personal Flow' },
+  { keys:['netflix'],                               cat:'Servicios',         concept:'Netflix' },
+  { keys:['spotify'],                               cat:'Servicios',         concept:'Spotify' },
+  { keys:['celular fran','teléfono fran','telefono fran'],cat:'Servicios',  concept:'Teléfono Fran' },
+  { keys:['celular pachu','teléfono pachu','telefono pachu'],cat:'Servicios',concept:'Teléfono Pachu' },
+  { keys:['seguro casa','seguro inmobiliario','seguro hogar'],cat:'Servicios',concept:'Seguro inmobiliario' },
+  { keys:['verisure','alarma'],                     cat:'Servicios',         concept:'Verisure' },
+  { keys:['super','supermercado','coto','disco','carrefour','jumbo','día','dia'],cat:'Alimentación',concept:'Supermercado' },
+  { keys:['delivery','pedidos ya','rappi','glovo'], cat:'Alimentación',      concept:'Delivery' },
+  { keys:['verduleria','verdulería','fruta','verdura'],cat:'Alimentación',  concept:'Verdulería' },
+  { keys:['polleria','pollería','carniceria','carnicería','carne','pollo'],cat:'Alimentación',concept:'Pollería/Carnicería' },
+  { keys:['panaderia','panadería','pan'],            cat:'Alimentación',      concept:'Panadería' },
+  { keys:['pañalera','pañales','pañaleria'],         cat:'Alimentación',      concept:'Pañalera' },
+  { keys:['limpieza','higiene','mayorista limpieza'],cat:'Alimentación',     concept:'Limpieza/Higiene' },
+  { keys:['kiosko','almuerzo','kiosco'],             cat:'Alimentación',      concept:'Kiosko/Almuerzo' },
+  { keys:['empleada','catalina','cata','sueldo empleada'],cat:'Personal doméstico',concept:'Empleada' },
+  { keys:['hora extra','horas extra','extra cata'],  cat:'Personal doméstico',concept:'Horas extra Cata' },
+  { keys:['seguro auto','seguro coche'],             cat:'Rodados',           concept:'Seguro auto' },
+  { keys:['nafta','combustible','gasoil','gnc'],     cat:'Rodados',           concept:'Nafta' },
+  { keys:['patente','vtv'],                          cat:'Rodados',           concept:'Patente' },
+  { keys:['peaje','peajes','autopista'],             cat:'Rodados',           concept:'Peajes' },
+  { keys:['estacionamiento','parking'],              cat:'Rodados',           concept:'Estacionamiento' },
+  { keys:['lavadero','auto lavadero'],               cat:'Rodados',           concept:'Lavadero' },
+  { keys:['uber','cabify','taxi','remis'],            cat:'Rodados',           concept:'Uber' },
+  { keys:['seguro bici','bicicleta'],                cat:'Rodados',           concept:'Seguro Bicicleta' },
+  { keys:['osde','obra social','prepaga'],           cat:'Salud',             concept:'OSDE 210 familiar' },
+  { keys:['farmacia','remedios','medicamentos'],      cat:'Salud',             concept:'Farmacia' },
+  { keys:['jardín','jardin','colegio','santos','escuela','mora','balta'],cat:'Educación',concept:'Jardín / Colegio' },
+  { keys:['librería','libreria','útiles','utiles'],  cat:'Educación',         concept:'Librería' },
+  { keys:['náutico','nautico','club náutico'],        cat:'Esparcimiento',     concept:'Náutico' },
+  { keys:['piletero','pileta'],                      cat:'Esparcimiento',     concept:'Piletero' },
+  { keys:['cloro','productos pileta'],               cat:'Esparcimiento',     concept:'Cloro' },
+  { keys:['natacion','natación'],                    cat:'Esparcimiento',     concept:'Natación Balta' },
+  { keys:['cerámica','ceramica'],                    cat:'Esparcimiento',     concept:'Cerámica Pachu' },
+  { keys:['salida pyf','salida pachu','salida fran','salidas pareja','salida pareja'],cat:'Vida Social',concept:'Salidas PyF' },
+  { keys:['salida familiar','salida familia','salida con los chicos'],cat:'Vida Social',concept:'Salidas familiares' },
+  { keys:['peluquería pachu','peluqueria pachu','corte pachu'],cat:'Vida Social',concept:'Peluquería Pachu' },
+  { keys:['peluquería fran','peluqueria fran','corte fran'],cat:'Vida Social',concept:'Peluquería Fran' },
+  { keys:['peluquería balta','peluqueria balta','corte balta'],cat:'Vida Social',concept:'Peluquería Balta' },
+  { keys:['regalo familiar','regalo familia'],       cat:'Vida Social',       concept:'Regalos familiares' },
+  { keys:['regalo amigos','regalo amigo'],           cat:'Vida Social',       concept:'Regalos amigos' },
+  { keys:['impuesto bancario','comisión banco','comision banco'],cat:'Bancos / AFIP',concept:'Impuestos bancarios' },
+  { keys:['mantenimiento banco','costo banco'],      cat:'Bancos / AFIP',     concept:'Costos mantenimiento' },
+  { keys:['monotributo pachu'],                      cat:'Bancos / AFIP',     concept:'Monotributo Pachu' },
+  { keys:['monotributo fran'],                       cat:'Bancos / AFIP',     concept:'Monotributo Fran' },
+  { keys:['sueldo fran','salario fran'],             cat:'Sueldos personales',concept:'Sueldo Fran' },
+  { keys:['sueldo pachu','salario pachu'],           cat:'Sueldos personales',concept:'Sueldo Pachu' },
+  // Extraordinarios
+  { keys:['mecánico','mecanico','taller','repuesto','repuestos'],cat:'Extraordinarios',concept:'Mecánico / Auto' },
+  { keys:['ferretería','ferreteria','arreglo casa','plomero','electricista','gasista'],cat:'Extraordinarios',concept:'Casa / Ferretería' },
+  { keys:['regalo cumple','regalo extraordinario'],  cat:'Extraordinarios',   concept:'Regalos extraordinarios' },
+  { keys:['ropa','calzado','zapatilla','zapatillas','jean','remera'],cat:'Extraordinarios',concept:'Ropa y calzado' },
+  { keys:['salida extra','restaurant','restorán','restoran','cena especial'],cat:'Extraordinarios',concept:'Salidas / Ocio extra' },
+  { keys:['salud extra','copago','médico particular','medico particular'],cat:'Extraordinarios',concept:'Salud extra' },
+  { keys:['préstamo','prestamo','cuota préstamo','cuota prestamo'],cat:'Préstamo',concept:'Cuota Préstamo' },
+  { keys:['ahorro','inversión','inversion'],         cat:'Ahorro',            concept:'Ahorro / Inversión mensual' },
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let accessToken = localStorage.getItem('cf_token') || null;
+let pendingItems = [];
+let recognition = null;
+let isRecording = false;
+let sheetStructure = {}; // { sheetName: { concept: rowNumber } }
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  updateMonthBadge();
+
+  // Handle OAuth callback
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (code) {
+    history.replaceState({}, '', window.location.pathname);
+    await exchangeCode(code);
+    return;
+  }
+
+  if (accessToken) {
+    showApp();
+    await loadSheetStructure();
+    addAgentMessage('¡Hola! 👋 Estoy conectado a tu planilla. Contame qué gastaste — podés escribir o hablar.', 'success');
+  }
+});
+
+function updateMonthBadge() {
+  const now = new Date();
+  document.getElementById('month-display').textContent = MONTHS[now.getMonth()].toUpperCase();
+}
+
+function currentMonth() {
+  return MONTHS[new Date().getMonth()];
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+function startOAuth() {
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&response_type=code&scope=${encodeURIComponent(SCOPES)}&access_type=offline&prompt=consent`;
+  window.location.href = url;
+}
+
+async function exchangeCode(code) {
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code, client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+        redirect_uri: REDIRECT_URI, grant_type: 'authorization_code'
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      accessToken = data.access_token;
+      if (data.refresh_token) localStorage.setItem('cf_refresh', data.refresh_token);
+      localStorage.setItem('cf_token', accessToken);
+      showApp();
+      await loadSheetStructure();
+      addAgentMessage('✅ Conectado a tu Google Sheet. Contame qué gastaste.', 'success');
+    } else {
+      addAgentMessage('Error al conectar con Google. Intentá de nuevo.', 'error');
+    }
+  } catch(e) {
+    addAgentMessage('Error de conexión: ' + e.message, 'error');
+  }
+}
+
+async function refreshAccessToken() {
+  const refresh = localStorage.getItem('cf_refresh');
+  if (!refresh) return false;
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        refresh_token: refresh, client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET, grant_type: 'refresh_token'
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      accessToken = data.access_token;
+      localStorage.setItem('cf_token', accessToken);
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function useManualToken() {
+  const token = document.getElementById('manual-token').value.trim();
+  if (!token) return;
+  accessToken = token;
+  localStorage.setItem('cf_token', token);
+  showApp();
+  loadSheetStructure();
+  addAgentMessage('✅ Token cargado. Contame qué gastaste.', 'success');
+}
+
+function showApp() {
+  document.getElementById('auth-overlay').classList.add('hidden');
+  document.getElementById('logout-btn').classList.remove('hidden');
+}
+
+function logout() {
+  localStorage.removeItem('cf_token');
+  localStorage.removeItem('cf_refresh');
+  accessToken = null;
+  location.reload();
+}
+
+// ── SHEETS API ────────────────────────────────────────────────────────────────
+async function sheetsGet(range) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}`;
+  let res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  }
+  return res.json();
+}
+
+async function sheetsUpdate(range, values) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  let res = await fetch(url, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ range, majorDimension: 'ROWS', values })
+  });
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) res = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ range, majorDimension: 'ROWS', values })
+    });
+  }
+  return res.json();
+}
+
+async function loadSheetStructure() {
+  // Load the current month sheet to map concept → row number
+  const month = currentMonth();
+  try {
+    const data = await sheetsGet(`${month}!A1:B200`);
+    if (!data.values) return;
+    sheetStructure[month] = {};
+    data.values.forEach((row, idx) => {
+      const concept = (row[1] || '').trim();
+      if (concept) sheetStructure[month][concept.toLowerCase()] = idx + 1;
+    });
+  } catch(e) {
+    console.error('Error loading sheet structure', e);
+  }
+}
+
+function findRow(month, conceptName) {
+  const map = sheetStructure[month] || {};
+  const key = conceptName.toLowerCase();
+  if (map[key] !== undefined) return map[key];
+  // Fuzzy: partial match
+  for (const [k, row] of Object.entries(map)) {
+    if (k.includes(key) || key.includes(k)) return row;
+  }
+  return null;
+}
+
+// ── PARSING ───────────────────────────────────────────────────────────────────
+function normalizeText(t) {
+  return t.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.,;:]/g, ' ');
+}
+
+function parseAmount(text) {
+  // Find patterns like $8500, 8.500, 8500, 8,500
+  const patterns = [
+    /\$\s*([\d.,]+)/g,
+    /\b([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?:pesos?|ars)?\b/g,
+  ];
+  const amounts = [];
+  for (const p of patterns) {
+    let m;
+    while ((m = p.exec(text)) !== null) {
+      let raw = m[1].replace(/\./g, '').replace(',', '.');
+      const val = parseFloat(raw);
+      if (val > 100) amounts.push(val);
+    }
+  }
+  return amounts.length ? Math.max(...amounts) : null;
+}
+
+function matchCategory(text) {
+  const norm = normalizeText(text);
+  let best = null, bestScore = 0;
+  for (const entry of CATEGORY_MAP) {
+    for (const key of entry.keys) {
+      const normKey = normalizeText(key);
+      if (norm.includes(normKey)) {
+        const score = normKey.length;
+        if (score > bestScore) { bestScore = score; best = entry; }
+      }
+    }
+  }
+  return best;
+}
+
+// Parse multiple expenses from one message
+// e.g. "super $45000, nafta $12000 y verdulería $8500"
+function parseExpenses(text) {
+  const results = [];
+  // Split by connectors
+  const parts = text.split(/\s*(?:,|y además|además|también|y)\s*/i);
+
+  for (const part of parts) {
+    if (part.trim().length < 3) continue;
+    const amount = parseAmount(part);
+    const cat = matchCategory(part);
+    if (amount && cat) {
+      results.push({ amount, cat: cat.cat, concept: cat.concept, raw: part.trim() });
+    } else if (amount && !cat) {
+      results.push({ amount, cat: null, concept: null, raw: part.trim() });
+    }
+  }
+  return results;
+}
+
+// ── MESSAGES UI ───────────────────────────────────────────────────────────────
+function addUserMessage(text) {
+  const feed = document.getElementById('feed');
+  const now = new Date();
+  const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  feed.innerHTML += `
+    <div class="msg user">
+      <div class="bubble">${escHtml(text)}</div>
+      <div class="ts">${ts}</div>
+    </div>`;
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function addAgentMessage(text, type='') {
+  const feed = document.getElementById('feed');
+  feed.innerHTML += `
+    <div class="msg agent">
+      <div class="bubble ${type}">${text}</div>
+    </div>`;
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function showTyping() {
+  const feed = document.getElementById('feed');
+  feed.innerHTML += `<div class="msg agent" id="typing-indicator">
+    <div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>
+  </div>`;
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function hideTyping() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showConfirmCard(items) {
+  const feed = document.getElementById('feed');
+  const month = currentMonth();
+  const itemsHtml = items.map((item, i) => `
+    <div class="confirm-item">
+      <div style="display:flex;flex-direction:column;gap:2px;flex:1">
+        <span class="concept">${escHtml(item.concept || '¿?')}</span>
+        <span class="cat-tag">${escHtml(item.cat || 'Sin categoría')}</span>
+      </div>
+      <span class="amount">$${item.amount.toLocaleString('es-AR')}</span>
+    </div>`).join('');
+
+  const cardId = 'confirm-' + Date.now();
+  feed.innerHTML += `
+    <div class="msg agent" id="${cardId}">
+      <div class="confirm-card">
+        <div class="label">📋 ${month} — Confirmar carga</div>
+        <div class="confirm-items">${itemsHtml}</div>
+        <div class="confirm-actions">
+          <button class="btn-confirm btn-yes" onclick="confirmItems('${cardId}')">✓ Sí, cargar</button>
+          <button class="btn-confirm btn-no" onclick="cancelItems('${cardId}')">✕ Cancelar</button>
+        </div>
+      </div>
+    </div>`;
+  feed.scrollTop = feed.scrollHeight;
+  pendingItems = items;
+}
+
+async function confirmItems(cardId) {
+  document.getElementById(cardId)?.remove();
+  if (!pendingItems.length) return;
+
+  const month = currentMonth();
+  showTyping();
+
+  let successes = [], errors = [];
+  for (const item of pendingItems) {
+    if (!item.concept) {
+      errors.push(`No encontré la categoría para "${item.raw}"`);
+      continue;
+    }
+    const row = findRow(month, item.concept);
+    if (!row) {
+      errors.push(`No encontré la fila de "${item.concept}" en ${month}`);
+      continue;
+    }
+    // Col D = column 4 = Real ARS
+    const range = `${month}!D${row}`;
+    // Get current value first, then add
+    try {
+      const current = await sheetsGet(range);
+      const currentVal = parseFloat((current.values?.[0]?.[0] || '0').toString().replace(/[^0-9.]/g,'')) || 0;
+      const newVal = currentVal + item.amount;
+      await sheetsUpdate(range, [[newVal]]);
+      successes.push(`${item.concept}: $${item.amount.toLocaleString('es-AR')} ${currentVal > 0 ? `(total: $${newVal.toLocaleString('es-AR')})` : ''}`);
+    } catch(e) {
+      errors.push(`Error cargando ${item.concept}: ${e.message}`);
+    }
+  }
+
+  hideTyping();
+  if (successes.length) {
+    addAgentMessage('✅ Cargado en la planilla:<br>' + successes.map(s => `• ${s}`).join('<br>'), 'success');
+  }
+  if (errors.length) {
+    addAgentMessage('⚠️ ' + errors.join('<br>'), 'error');
+  }
+  pendingItems = [];
+}
+
+function cancelItems(cardId) {
+  document.getElementById(cardId)?.remove();
+  pendingItems = [];
+  addAgentMessage('Cancelado. ¿Qué más necesitás?');
+}
+
+// ── MAIN LOGIC ────────────────────────────────────────────────────────────────
+async function processInput(text) {
+  if (!text.trim()) return;
+  addUserMessage(text);
+  showTyping();
+
+  await new Promise(r => setTimeout(r, 600));
+  hideTyping();
+
+  if (!accessToken) {
+    addAgentMessage('Primero tenés que conectar tu Google Sheet. Tocá el botón de arriba.', 'error');
+    return;
+  }
+
+  // Check for month override
+  let targetMonth = currentMonth();
+  const monthMatch = normalizeText(text).match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/);
+  if (monthMatch) {
+    const found = MONTHS.find(m => normalizeText(m) === monthMatch[1]);
+    if (found) targetMonth = found;
+  }
+
+  // Check for questions
+  const norm = normalizeText(text);
+  if (norm.match(/\b(cuanto|cuánto|total|gastamos|gastamos|saldo|balance)\b/)) {
+    addAgentMessage('Para consultar saldos y totales, abrí la planilla directamente. Yo me encargo solo de cargar gastos. 😊');
+    return;
+  }
+
+  // Parse expenses
+  const expenses = parseExpenses(text);
+
+  if (!expenses.length) {
+    addAgentMessage('No entendí ningún gasto. Probá con algo como:<br>• <em>"super $45000"</em><br>• <em>"nafta $12000 y verdulería $8500"</em><br>• <em>"le pagué a Cata $14000"</em>');
+    return;
+  }
+
+  // Items with unknown category
+  const unknowns = expenses.filter(e => !e.cat);
+  if (unknowns.length) {
+    addAgentMessage(`No reconocí la categoría de: "${unknowns.map(u=>u.raw).join('", "')}". ¿Podés ser más específico?`);
+    return;
+  }
+
+  // If different month selected
+  if (targetMonth !== currentMonth()) {
+    expenses.forEach(e => e.month = targetMonth);
+    addAgentMessage(`Voy a cargar en <strong>${targetMonth}</strong>, no en el mes actual. ¿Está bien?`);
+  }
+
+  showConfirmCard(expenses);
+}
+
+// ── INPUT HANDLING ────────────────────────────────────────────────────────────
+function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = '';
+  processInput(text);
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── VOICE ─────────────────────────────────────────────────────────────────────
+function toggleMic() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    addAgentMessage('Tu navegador no soporta reconocimiento de voz. Usá Chrome en Android o Safari en iOS.', 'error');
+    return;
+  }
+  if (isRecording) stopMic();
+  else startMic();
+}
+
+function startMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'es-AR';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    processInput(text);
+  };
+  recognition.onerror = (e) => {
+    addAgentMessage('Error de voz: ' + e.error, 'error');
+    stopMic();
+  };
+  recognition.onend = () => stopMic();
+  recognition.start();
+  isRecording = true;
+  document.getElementById('mic-btn').classList.add('recording');
+  document.getElementById('mic-btn').querySelector('svg').setAttribute('stroke', 'white');
+}
+
+function stopMic() {
+  if (recognition) recognition.stop();
+  isRecording = false;
+  const btn = document.getElementById('mic-btn');
+  btn.classList.remove('recording');
+  btn.querySelector('svg').setAttribute('stroke', '#7a9ab5');
+}
+</script>
+
+</body>
+</html>
