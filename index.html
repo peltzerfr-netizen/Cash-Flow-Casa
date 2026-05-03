@@ -253,19 +253,47 @@ async function loadSheetData(month) {
     if (!data.values) { setSyncStatus('error'); return; }
 
     sheetData[month] = [];
+
+    // Known categories in the sheet
+    const KNOWN_CATS = [
+      'Servicios','Alimentación','Personal doméstico','Rodados','Salud',
+      'Educación','Esparcimiento','Vida Social','Bancos / AFIP','Sueldos personales'
+    ];
+    // Known section headers to skip
+    const SKIP_CONCEPTS = [
+      'CONCEPTO','PRESUP. ARS','GASTOS FIJOS','OBLIGACIÓN FINANCIERA',
+      'GASTOS EXTRAORDINARIOS','META DE AHORRO MENSUAL','INGRESOS','BALANCE DEL MES',
+      'Subtotal','TOTAL','TC:','Arreglos','Cumples','Familia completa',
+      'Restoranes','Copagos','Todo lo que','descripción','Descripción'
+    ];
+
     data.values.forEach((row, idx) => {
       const cat     = (row[0] || '').trim();
       const concept = (row[1] || '').trim();
-      // Skip headers, subtotals, empty rows, section titles
       if (!concept || !cat) return;
-      if (concept.startsWith('Subtotal') || cat.startsWith('Subtotal')) return;
-      if (['CATEGORÍA','CONCEPTO','GASTOS FIJOS','OBLIGACIÓN FINANCIERA',
-           'GASTOS EXTRAORDINARIOS','META DE AHORRO MENSUAL','INGRESOS',
-           'BALANCE DEL MES','TC:'].some(h => cat.includes(h) || concept.includes(h))) return;
-      // Only rows where col B has a meaningful concept (not a number/formula result)
-      if (/^[\d,.$-]+$/.test(concept)) return;
-
+      // Skip if concept looks like a number or formula result
+      if (/^[\d,.$()U\s-]+$/.test(concept)) return;
+      // Skip known section headers
+      if (SKIP_CONCEPTS.some(s => concept.includes(s) || cat.includes(s))) return;
+      // For gastos extraordinarios: col A has the rubro, col B has description — we want col A as concept
+      // Accept rows where cat is a known category OR where it looks like a valid category name
+      const isKnownCat = KNOWN_CATS.some(k => cat.includes(k));
+      if (!isKnownCat) {
+        // Could be an extraordinario where A=rubro, B=description
+        // In that case push with cat as concept and 'Extraordinarios' as category
+        if (cat.length > 2 && cat.length < 50 && !SKIP_CONCEPTS.some(s => cat.includes(s))) {
+          sheetData[month].push({ row: idx + 1, category: 'Extraordinarios', concept: cat });
+        }
+        return;
+      }
       sheetData[month].push({ row: idx + 1, category: cat, concept: concept });
+    });
+
+    // Deduplicate by concept name
+    const seen = new Set();
+    sheetData[month] = sheetData[month].filter(r => {
+      if (seen.has(r.concept)) return false;
+      seen.add(r.concept); return true;
     });
 
     setSyncStatus('ok');
@@ -402,6 +430,43 @@ function cancelItems(cardId) {
   addAgentMsg('Cancelado. ¿Qué más necesitás?');
 }
 
+
+// ── FALLBACK KEYWORD PARSER ───────────────────────────────────────────────────
+function fallbackParse(text, month) {
+  const concepts = sheetData[month] || [];
+  const norm = t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const results = [];
+
+  // Extract amounts
+  const amountRe = /\$\s*([\d.,]+)/g;
+  const amounts = [];
+  let m;
+  while ((m = amountRe.exec(text)) !== null) {
+    const raw = m[1].replace(/\./g,'').replace(',','.');
+    const val = parseFloat(raw);
+    if (val > 0) amounts.push({ val, index: m.index });
+  }
+  if (!amounts.length) return [];
+
+  // Try to match each amount to a concept
+  const normText = norm(text);
+  for (const concept of concepts) {
+    const normConcept = norm(concept.concept);
+    // Check if any word of the concept appears in the text
+    const words = normConcept.split(/[\s\/]+/).filter(w => w.length > 3);
+    const matched = words.some(w => normText.includes(w));
+    if (matched) {
+      // Find nearest amount
+      const amount = amounts[0]?.val;
+      if (amount) {
+        results.push({ concept: concept.concept, amount, raw: text });
+        break;
+      }
+    }
+  }
+  return results;
+}
+
 // ── MAIN FLOW ─────────────────────────────────────────────────────────────────
 async function processInput(text) {
   if (!text.trim()) return;
@@ -430,20 +495,32 @@ async function processInput(text) {
     return;
   }
 
-  // Use Claude to parse and categorize
+  // Use Claude to parse and categorize, with keyword fallback
   let parsed = [];
   try {
     parsed = await categorizeWithClaude(text, targetMonth);
   } catch(e) {
-    hideTyping();
-    addAgentMsg('Error al procesar. Verificá tu conexión e intentá de nuevo.', 'error');
-    return;
+    console.error('Claude API error:', e);
+  }
+
+  // Fallback: if Claude failed or returned nothing, try simple keyword+amount parse
+  if (!parsed.length) {
+    parsed = fallbackParse(text, targetMonth);
   }
 
   hideTyping();
 
+  // Debug: show what was loaded
+  const loadedConcepts = (sheetData[targetMonth] || []).map(r => r.concept);
+  console.log('Parsed by Claude:', parsed);
+  console.log('Loaded concepts:', loadedConcepts);
+
   if (!parsed.length) {
-    addAgentMsg('No entendí ningún gasto. Probá con algo como:<br>• <em>"super $45000"</em><br>• <em>"nafta $12000 y verdulería $8500"</em><br>• <em>"regalos $25000"</em>');
+    if (!loadedConcepts.length) {
+      addAgentMsg('⚠️ No pude leer la planilla. Intentá cerrar y abrir la app de nuevo.', 'error');
+    } else {
+      addAgentMsg('No entendí el gasto. Los conceptos disponibles son:<br>' + loadedConcepts.map(c=>`• ${c}`).join('<br>'));
+    }
     return;
   }
 
