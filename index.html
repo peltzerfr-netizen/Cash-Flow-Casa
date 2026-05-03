@@ -286,8 +286,7 @@ async function loadSheetData(month) {
       if (/^[\d,.$()U\s%-]+$/.test(colA)) return;
 
       if (inExtraSection) {
-        // Col A = rubro (concept), Col B = description (skip)
-        if (EXT_DESCRIPTIONS.some(d => colB.includes(d))) return; // skip description rows
+        // Col A = rubro, Col B = mismo valor o descripción — siempre usar col A como concept
         if (colA.length > 2 && colA.length < 60) {
           sheetData[month].push({ row: idx + 1, category: 'Extraordinarios', concept: colA });
         }
