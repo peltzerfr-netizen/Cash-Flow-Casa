@@ -254,42 +254,60 @@ async function loadSheetData(month) {
 
     sheetData[month] = [];
 
-    // Known categories in the sheet
     const KNOWN_CATS = [
       'Servicios','Alimentación','Personal doméstico','Rodados','Salud',
       'Educación','Esparcimiento','Vida Social','Bancos / AFIP','Sueldos personales'
     ];
-    // Known section headers to skip
-    const SKIP_CONCEPTS = [
-      'CONCEPTO','PRESUP. ARS','GASTOS FIJOS','OBLIGACIÓN FINANCIERA',
-      'GASTOS EXTRAORDINARIOS','META DE AHORRO MENSUAL','INGRESOS','BALANCE DEL MES',
-      'Subtotal','TOTAL','TC:','Arreglos','Cumples','Familia completa',
-      'Restoranes','Copagos','Todo lo que','descripción','Descripción'
+    const SKIP_WORDS = [
+      'CATEGORÍA','CONCEPTO','GASTOS FIJOS','OBLIGACIÓN','EXTRAORDINARIOS',
+      'AHORRO','INGRESOS','BALANCE','Subtotal','TOTAL','TC:','PRESUP',
+      'REAL','DIF','EJEC','Fondo de reserva'
+    ];
+    // Section headers that signal we're in extraordinarios section
+    const EXT_SECTION_MARKERS = ['GASTOS EXTRAORDINARIOS'];
+    const EXT_DESCRIPTIONS = [
+      'Arreglos, repuestos','Arreglos del hogar','Cumples, eventos',
+      'Familia completa','Restoranes, viajes','Copagos, remedios','Todo lo que'
     ];
 
+    let inExtraSection = false;
+
     data.values.forEach((row, idx) => {
-      const cat     = (row[0] || '').trim();
-      const concept = (row[1] || '').trim();
-      if (!concept || !cat) return;
-      // Skip if concept looks like a number or formula result
-      if (/^[\d,.$()U\s-]+$/.test(concept)) return;
-      // Skip known section headers
-      if (SKIP_CONCEPTS.some(s => concept.includes(s) || cat.includes(s))) return;
-      // For gastos extraordinarios: col A has the rubro, col B has description — we want col A as concept
-      // Accept rows where cat is a known category OR where it looks like a valid category name
-      const isKnownCat = KNOWN_CATS.some(k => cat.includes(k));
-      if (!isKnownCat) {
-        // Could be an extraordinario where A=rubro, B=description
-        // In that case push with cat as concept and 'Extraordinarios' as category
-        if (cat.length > 2 && cat.length < 50 && !SKIP_CONCEPTS.some(s => cat.includes(s))) {
-          sheetData[month].push({ row: idx + 1, category: 'Extraordinarios', concept: cat });
+      const colA = (row[0] || '').trim();
+      const colB = (row[1] || '').trim();
+
+      // Detect section changes
+      if (EXT_SECTION_MARKERS.some(m => colA.includes(m))) { inExtraSection = true; return; }
+      if (['META DE AHORRO','INGRESOS','BALANCE'].some(m => colA.includes(m))) { inExtraSection = false; return; }
+
+      // Skip empty or header rows
+      if (!colA) return;
+      if (SKIP_WORDS.some(s => colA.includes(s) || colB.includes(s))) return;
+      if (/^[\d,.$()U\s%-]+$/.test(colA)) return;
+
+      if (inExtraSection) {
+        // Col A = rubro (concept), Col B = description (skip)
+        if (EXT_DESCRIPTIONS.some(d => colB.includes(d))) return; // skip description rows
+        if (colA.length > 2 && colA.length < 60) {
+          sheetData[month].push({ row: idx + 1, category: 'Extraordinarios', concept: colA });
         }
-        return;
+      } else {
+        const isKnownCat = KNOWN_CATS.some(k => colA.includes(k));
+        if (isKnownCat && colB && colB.length > 1 && !/^[\d,.$()U\s%-]+$/.test(colB)) {
+          sheetData[month].push({ row: idx + 1, category: colA, concept: colB });
+        }
       }
-      sheetData[month].push({ row: idx + 1, category: cat, concept: concept });
     });
 
-    // Deduplicate by concept name
+    // Also add Cuota Préstamo and Ahorro
+    data.values.forEach((row, idx) => {
+      const colA = (row[0] || '').trim();
+      const colB = (row[1] || '').trim();
+      if (colA === 'Cuota Préstamo') sheetData[month].push({ row: idx+1, category: 'Préstamo', concept: 'Cuota Préstamo' });
+      if (colA === 'Ahorro / Inversión mensual') sheetData[month].push({ row: idx+1, category: 'Ahorro', concept: 'Ahorro / Inversión mensual' });
+    });
+
+    // Deduplicate
     const seen = new Set();
     sheetData[month] = sheetData[month].filter(r => {
       if (seen.has(r.concept)) return false;
@@ -359,14 +377,21 @@ function smartMatch(userText, month) {
     // Candidates with score close to top (within 15 points)
     const candidates = scored.filter(s => s.score >= topScore - 15);
 
-    if (candidates.length === 1) {
+    // Check for sibling concepts (same root word, e.g. "Regalos familiares" vs "Regalos amigos")
+    const topConcept   = candidates[0].entry.concept;
+    const rootWord     = norm(topConcept).split(' ')[0]; // e.g. "regalos"
+    const siblings     = concepts.filter(e => norm(e.concept).startsWith(rootWord) && e.concept !== topConcept);
+    const forceAmbig   = siblings.length > 0 && scored.filter(s => s.score >= 9).length >= 2;
+
+    if (candidates.length === 1 && !forceAmbig) {
       results.push({ concept: candidates[0].entry.concept, amount: partAmount, raw: part.trim() });
     } else {
-      // Ambiguous — return special object with options
+      // Ambiguous — show all options with score >= 9
+      const allOptions = scored.filter(s => s.score >= 9);
       results.push({
         concept:    null,
         ambiguous:  true,
-        options:    candidates.map(c => ({ concept: c.entry.concept, category: c.entry.category })),
+        options:    allOptions.map(c => ({ concept: c.entry.concept, category: c.entry.category })),
         amount:     partAmount,
         raw:        part.trim()
       });
