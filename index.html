@@ -304,42 +304,80 @@ async function loadSheetData(month) {
   }
 }
 
-// ── CLAUDE AI CATEGORIZER ─────────────────────────────────────────────────────
-async function categorizeWithClaude(userText, month) {
-  const concepts = (sheetData[month] || []).map(r => `"${r.concept}" (${r.category})`).join(', ');
+// ── SMART LOCAL MATCHER ──────────────────────────────────────────────────────
+function norm(t) {
+  return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,' ').trim();
+}
 
-  const prompt = `Sos un asistente de finanzas personales argentino. El usuario dice: "${userText}"
-
-Los conceptos disponibles en la planilla son: ${concepts}
-
-Identificá todos los gastos mencionados. Para cada gasto devolvé un JSON array con objetos que tengan:
-- "concept": el nombre EXACTO del concepto de la planilla (copialo tal cual)
-- "amount": el monto en pesos (número sin símbolos)
-- "raw": el fragmento original del texto
-
-Si un gasto no coincide con ningún concepto, usá "concept": null.
-Si no hay gastos, devolvé [].
-
-Respondé SOLO con el JSON array, sin texto adicional, sin markdown.`;
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  const data = await res.json();
-  const text = data.content?.[0]?.text || '[]';
-  try {
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch(e) {
-    console.error('Parse error:', text);
-    return [];
+function parseAmounts(text) {
+  const re = /\$\s*([\d.,]+)/g;
+  const amounts = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[1].replace(/\./g,'').replace(',','.');
+    const val = parseFloat(raw);
+    if (val > 0) amounts.push(val);
   }
+  return amounts;
+}
+
+function smartMatch(userText, month) {
+  const concepts = sheetData[month] || [];
+  if (!concepts.length) return [];
+
+  const amounts = parseAmounts(userText);
+  if (!amounts.length) return [];
+
+  const parts = userText.split(/[,;]|\by\b|\badem[aá]s\b|\btambi[eé]n\b/i);
+  const results = [];
+
+  for (const part of parts) {
+    const normPart   = norm(part);
+    const partAmount = parseAmounts(part)[0];
+    if (!partAmount) continue;
+
+    const scored = [];
+
+    for (const entry of concepts) {
+      const normConcept  = norm(entry.concept);
+      const conceptWords = normConcept.split(/\s+/).filter(w => w.length >= 3);
+      let score = 0;
+
+      if (normPart.includes(normConcept)) score += 100;
+      for (const cw of conceptWords) {
+        if (normPart.includes(cw)) score += cw.length * 3;
+      }
+      if (conceptWords[0] && normPart.includes(conceptWords[0])) score += 10;
+
+      if (score >= 9) scored.push({ entry, score });
+    }
+
+    if (!scored.length) continue;
+
+    scored.sort((a,b) => b.score - a.score);
+    const topScore = scored[0].score;
+    // Candidates with score close to top (within 15 points)
+    const candidates = scored.filter(s => s.score >= topScore - 15);
+
+    if (candidates.length === 1) {
+      results.push({ concept: candidates[0].entry.concept, amount: partAmount, raw: part.trim() });
+    } else {
+      // Ambiguous — return special object with options
+      results.push({
+        concept:    null,
+        ambiguous:  true,
+        options:    candidates.map(c => ({ concept: c.entry.concept, category: c.entry.category })),
+        amount:     partAmount,
+        raw:        part.trim()
+      });
+    }
+  }
+  return results;
+}
+
+async function categorizeWithClaude(userText, month) {
+  // Use smart local matching — no external API needed
+  return smartMatch(userText, month);
 }
 
 // ── FIND ROW IN SHEET ─────────────────────────────────────────────────────────
@@ -397,6 +435,43 @@ function showConfirmCard(items, month) {
     </div>`;
   scrollFeed();
   pendingItems = items;
+}
+
+
+function showDisambiguationCard(item, month) {
+  const cardId = 'disambig-' + Date.now();
+  const optionsHtml = item.options.map((opt, i) => `
+    <button class="btn-confirm btn-no" style="margin-bottom:6px;text-align:left;padding:10px 14px;font-size:13px;font-weight:500"
+      onclick="resolveDisambig('${cardId}','${escHtml(opt.concept)}',${item.amount},'${month}')">
+      ${escHtml(opt.concept)} <span style="opacity:.6;font-size:11px">${escHtml(opt.category)}</span>
+    </button>`).join('');
+  document.getElementById('feed').innerHTML += `
+    <div class="msg agent" id="${cardId}">
+      <div class="confirm-card" style="border-color:#f5a623">
+        <div class="label">❓ ¿Cuál querés cargar? — $${Number(item.amount).toLocaleString('es-AR')}</div>
+        <div class="confirm-items" style="flex-direction:column;gap:6px">${optionsHtml}</div>
+        <button class="btn-confirm btn-no" style="margin-top:4px" onclick="document.getElementById('${cardId}').remove()">Cancelar</button>
+      </div>
+    </div>`;
+  scrollFeed();
+}
+
+async function resolveDisambig(cardId, concept, amount, month) {
+  document.getElementById(cardId)?.remove();
+  const found = findRow(month, concept);
+  if (!found) { addAgentMsg('No encontré esa fila.', 'error'); return; }
+  showTyping();
+  try {
+    const cur    = await sheetsGet(`${month}!D${found.row}`);
+    const curVal = parseFloat((cur.values?.[0]?.[0] || '0').toString().replace(/[^0-9.-]/g,'')) || 0;
+    const newVal = curVal + Number(amount);
+    await sheetsUpdate(`${month}!D${found.row}`, [[newVal]]);
+    hideTyping();
+    addAgentMsg(`✅ ${concept}: $${Number(amount).toLocaleString('es-AR')}${curVal > 0 ? ` → total $${newVal.toLocaleString('es-AR')}` : ''}`, 'success');
+  } catch(e) {
+    hideTyping();
+    addAgentMsg('Error: ' + e.message, 'error');
+  }
 }
 
 async function confirmItems(cardId, month) {
@@ -524,6 +599,24 @@ async function processInput(text) {
     return;
   }
 
+  // Handle ambiguous matches — show disambiguation UI
+  const ambiguous = parsed.filter(p => p.ambiguous);
+  if (ambiguous.length) {
+    for (const p of ambiguous) {
+      showDisambiguationCard(p, targetMonth);
+    }
+    // Also process non-ambiguous ones
+    const clear = parsed.filter(p => !p.ambiguous && p.concept);
+    if (clear.length) {
+      const items = clear.map(p => {
+        const found = findRow(targetMonth, p.concept);
+        return { concept: found ? found.concept : p.concept, category: found ? found.category : '', amount: p.amount, raw: p.raw, matched: !!found };
+      });
+      showConfirmCard(items, targetMonth);
+    }
+    return;
+  }
+
   // Enrich with category from sheet data
   const items = parsed.map(p => {
     const found = p.concept ? findRow(targetMonth, p.concept) : null;
@@ -538,8 +631,8 @@ async function processInput(text) {
 
   const unmatched = items.filter(i => !i.matched);
   if (unmatched.length) {
-    const names = (sheetData[targetMonth] || []).map(r => r.concept).join(', ');
-    addAgentMsg(`No encontré en la planilla: "${unmatched.map(u=>u.concept||u.raw).join('", "')}". Los conceptos disponibles son: ${names}`);
+    const names = (sheetData[targetMonth] || []).map(r => r.concept).slice(0,20).join(', ');
+    addAgentMsg(`No encontré: "${unmatched.map(u=>u.raw).join('", "')}". Probá siendo más específico. Algunos conceptos: ${names}`);
     return;
   }
 
